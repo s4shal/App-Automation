@@ -1,0 +1,134 @@
+import unittest
+import time
+import traceback
+from appium import webdriver
+from appium.webdriver.common.appiumby import AppiumBy
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+class DoorbellVideoStreamTest(unittest.TestCase):
+    def setUp(self):
+        """Setup Appium WebDriver with desired capabilities."""
+        capabilities = {
+            "platformName": "Android",
+            "automationName": "uiautomator2",
+            "deviceName": "Android",
+            "appPackage": "com.pyronixhc2.android.app",
+            "appActivity": "com.hikvision.app.features.home.presentation.activities.DashboardActivity",
+            "language": "en",
+            "locale": "US",
+            "noReset": True,  # Prevents app reset
+            "fullReset": False  # Keeps app data
+        }
+
+        self.driver = webdriver.Remote("http://localhost:4723", capabilities)
+
+        # Ensure the app is opened
+        self.driver.activate_app("com.pyronixhc2.android.app")
+        self.wait = WebDriverWait(self.driver, 20)  # 20s wait time
+
+    def test_doorbell_video_stream(self):
+        """Run the test 20 times with 40s intervals, close app after each test, and store results."""
+        results = []  # Store test results
+
+        for i in range(1, 21):  # Repeat test 20 times
+            try:
+                print(f"\n🔄 Running Test {i}...\n")
+                
+                # Ensure we are on the home screen
+                self.ensure_home_screen()
+
+                # Locate the doorbell
+                try:
+                    doorbell = self.wait.until(EC.element_to_be_clickable(
+                        (AppiumBy.XPATH, "//android.widget.TextView[@text='Thor V2 D']")
+                    ))
+                except:
+                    print("⚠️ Doorbell not found.")
+                    results.append((i, "Failed - Doorbell not found"))
+                    continue
+
+                # Click the doorbell to initiate the video stream
+                doorbell.click()
+
+                # Wait for progress bar to appear
+                try:
+                    progress_bar = WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located(
+                            (AppiumBy.ID, "com.pyronixhc2.android.app:id/progressBar")
+                        )
+                    )
+                    start_time = time.time()  # Start timing when progress bar appears
+                    print("⏳ Progress bar detected. Measuring delay...")
+                except:
+                    print("⚠️ Progress bar not found. Streaming might have started instantly.")
+                    results.append((i, "Instant Stream"))
+                    continue
+
+                # Wait for progress bar to disappear
+                self.wait.until(EC.invisibility_of_element_located(
+                    (AppiumBy.ID, "com.pyronixhc2.android.app:id/progressBar")
+                ))
+                elapsed_time = time.time() - start_time  # Measure time taken
+
+                # Format result
+                minutes, seconds = divmod(int(elapsed_time), 60)
+                result_text = f"{minutes} min {seconds} sec"
+                print(f"🎥 Test {i}: Video stream started in {result_text}.")
+                results.append((i, result_text))
+
+            except Exception as e:
+                print(f"❌ Test {i} failed due to: {e}")
+                print(traceback.format_exc())
+                results.append((i, "Error"))
+
+            # Return to home screen
+            print("🔄 Returning to home screen...")
+            self.return_to_home_screen()
+
+            # Close the app and wait 40 seconds before the next test
+            print("⏳ Closing the app and waiting for 40 seconds before reopening...")
+            self.driver.close_app()  # Close the app
+            time.sleep(40)  # Wait for 40 seconds
+            self.driver.launch_app()  # Reopen the app
+
+            # Wait before the next test
+            print("⏳ Waiting 40 seconds before the next test...\n")
+            time.sleep(40)
+
+        # Print summary
+        print("\n📊 **Test Results Summary** 📊\n")
+        for test_number, result in results:
+            print(f"Test {test_number}: {result}")
+
+    def ensure_home_screen(self):
+        """Ensure the app is on the home screen, refresh if necessary."""
+        try:
+            self.wait.until(EC.presence_of_element_located(
+                (AppiumBy.ID, "com.pyronixhc2.android.app:id/panels")
+            ))
+            print("✅ Already on the home screen.")
+        except:
+            print("⚠️ Not on home screen. Trying to navigate back...")
+            self.driver.press_keycode(4)  # Back key
+            time.sleep(2)
+            self.wait.until(EC.presence_of_element_located(
+                (AppiumBy.ID, "com.pyronixhc2.android.app:id/panels")
+            ))
+            print("✅ Back on the home screen.")
+
+    def return_to_home_screen(self):
+        """Ensure the app is back on the home screen after the test."""
+        try:
+            self.driver.press_keycode(4)  # Back key
+            time.sleep(2)
+            self.ensure_home_screen()
+        except:
+            print("⚠️ Failed to return to home screen.")
+
+    def tearDown(self):
+        """Close Appium WebDriver."""
+        self.driver.quit()
+
+if __name__ == "__main__":
+    unittest.main()
